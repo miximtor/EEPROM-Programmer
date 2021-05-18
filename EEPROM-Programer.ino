@@ -38,7 +38,7 @@ void writeEEPROM(unsigned int address, byte data)
   digitalWrite(WRITE_ENABLE, LOW);
   pollDelay(1);
   digitalWrite(WRITE_ENABLE, HIGH);
-  pollDelay(20);
+  pollDelay(10);
 }
 
 void writeSignleByte(unsigned int address, byte data)
@@ -82,7 +82,7 @@ void eraseEEPROM(byte fill)
 
 void setAddress(unsigned int address, bool enable_output)
 {
-  address = address & 0x0FFF;
+  address = address & 0x7FF;
   if (!enable_output)
   {
     address = address | 0x8000;
@@ -122,7 +122,7 @@ void setup() {
   else if (command[0] == 0x02)
   {
     eraseEEPROM(command[1]);
-    
+    pollDelay(1000);
     Serial.println("ACK");
   }
   else if (command[0] == 0x03)

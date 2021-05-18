@@ -46,6 +46,8 @@ if __name__ == '__main__':
             output = '%04X    ' % base
             for offset in range(0, 16, 1):
                 output += '%02X ' % dump[base + offset]
+                if offset % 4 == 0:
+                    output += '    '
             print(output)
 
     elif arguments.erase is not None:
