@@ -42,12 +42,16 @@ if __name__ == '__main__':
         dump = dump_eeprom(programmer, size)
 
         print('Total %d' % len(dump))
+
+        output = '        '
+        for i in range(0, 16):
+            output += '|  %02X  ' % i
+        print(output)
+
         for base in range(0, len(dump), 16):
             output = '%04X    ' % base
             for offset in range(0, 16, 1):
-                output += '%02X ' % dump[base + offset]
-                if offset % 4 == 0 and offset != 0:
-                    output += '    '
+                output += '|  %02X  ' % dump[base + offset]
             print(output)
 
     elif arguments.erase is not None:
