@@ -5,6 +5,28 @@
 #define IO_D7 12
 #define WRITE_ENABLE 13
 #define EEPROM_SIZE 2048
+#define BAUD_RATE 56400
+
+enum EEPROM_CTRL
+{
+  CMD_DUMP = 0x01,
+  CMD_ERASE,
+  CMD_WRITE_BYTE,
+  CMD_WRITE_FILE
+};
+
+void pollSerialRead(uint8_t *buffer, int size)
+{
+  int pos = 0;
+  while (true)
+  {
+    pos += Serial.readBytes(buffer + pos, size - pos);
+    if (pos >= size)
+    {
+      break;
+    }
+  }
+}
 
 void pollDelay(int latency)
 {
@@ -54,6 +76,17 @@ void setupWrite()
   pinMode(WRITE_ENABLE, OUTPUT);
 }
 
+void enableWE()
+{
+  digitalWrite(WRITE_ENABLE, LOW);
+  digitalWrite(WRITE_ENABLE, HIGH);
+}
+
+void sendACK()
+{
+  Serial.println("ACK");
+}
+
 void setAddress(unsigned int address, bool enable_output)
 {
   address = address & 0x7FF;
@@ -92,8 +125,6 @@ void writeEEPROM(uint16_t address, byte data)
     data = data >> 1;
   }
 
-  digitalWrite(WRITE_ENABLE, LOW);
-  digitalWrite(WRITE_ENABLE, HIGH);
   pollDelay(10);
 }
 
@@ -104,64 +135,64 @@ void writeSignleByte(unsigned int address, byte data)
 
 void dumpEEPROM()
 {
-
-
-  for (unsigned int address = 0; address < EEPROM_SIZE; address += 1)
+  uint8_t data[EEPROM_SIZE];
+  for (uint16_t address = 0; address < EEPROM_SIZE; ++address)
   {
-    byte data = readEEPROM(address);
-    Serial.write(data);
+    data[address] = readEEPROM(address);
   }
+
+  Serial.write(data, EEPROM_SIZE);
 }
 
 void eraseEEPROM(byte fill)
 {
-  for (int pin = IO_D0; pin <= IO_D7; pin += 1)
-  {
-    digitalWrite(pin, HIGH);
-    pinMode(pin, OUTPUT);
-  }
-
-  for (unsigned int address = 0; address < EEPROM_SIZE; address += 1)
+  for (uint16_t address = 0; address < EEPROM_SIZE; ++address)
   {
     writeEEPROM(address, fill);
   }
 }
 
-
-
 // the setup function runs once when you press reset or power the board
 void setup() {
-
-
-
-  Serial.begin(57600);
-  Serial.println("ACK");
+  Serial.begin(BAUD_RATE);
+  while (!Serial)
+  {
+    // polling wait
+  }
 
   Serial.println(EEPROM_SIZE);
-  
-  byte command[4];
-  while (Serial.available() < 4)
-  {}
-  Serial.readBytes(command, 4);
+  sendACK();
 
-  switch (command[0])
+  byte command[4];
+  pollSerialRead(command, 4);
+  sendACK();
+
+  if (command[0] == CMD_DUMP)
   {
-  case 0x01:
+    setupRead();
     dumpEEPROM();
-    break;
-  case 0x02:
+  }
+  else if (command[0] == CMD_ERASE)
+  {
+    setupWrite();
     eraseEEPROM(command[1]);
-    break; 
-  case 0x03:
+  }
+  else if (command[0] == CMD_WRITE_BYTE)
+  {
+    setupWrite();
     uint16_t address = (uint16_t(command[1]) << 8) | uint16_t(command[2]);
     writeSignleByte(address, command[3]);
-    break;
-  case 0x04:
-    uint16_t file_size = (uint16_t(command[1]) << 8) | uint16_t(command[2]);
-    break;
-  default:
-    break;
   }
+  else if (command[0] == CMD_WRITE_FILE)
+  {
+    setupWrite();
+    uint16_t file_size = (uint16_t(command[1]) << 8) | uint16_t(command[2]);
+  }
+  else
+  {
+    Serial.println("NACK");
+  }
+
   Serial.println("ACK");
   Serial.end();
 }

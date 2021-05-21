@@ -1,7 +1,15 @@
 import argparse
 import os
 import serial
+import prettytable
 
+CMD_DUMP = b'\x01'
+CMD_ERASE = b'\x02'
+CMD_WRITE_BYTE = b'\x03'
+CMD_WRITE_FILE = b'\x04'
+CMD_READ_BYTE = b'\x05'
+
+eeprom_size = 0
 
 def ensure_ack(ser: serial.Serial):
     ack = ser.readline().decode('ascii').strip()
@@ -9,18 +17,23 @@ def ensure_ack(ser: serial.Serial):
         raise Exception('reply not ack')
 
 
-def dump_eeprom(ser: serial.Serial, sz):
-    ser.write(b'\x01\x00\x00\x00')
-    eeprom_content = ser.read(sz)
+def dump_eeprom(ser: serial.Serial):
+    
+    ser.write(CMD_DUMP + b'\x00\x00\x00')
     ensure_ack(ser)
-    return eeprom_content
 
+    eeprom_content = ser.read(eeprom_size)
+    ensure_ack(ser)
+
+    return eeprom_content
 
 def make_connection(port):
     ser = serial.Serial(port, baudrate=57600)
+
+    eeprom_size = int(ser.readline().decode('ascii').strip())
     ensure_ack(ser)
-    sz = int(ser.readline().decode('ascii').strip())
-    return ser, sz
+
+    return ser
 
 
 def parse_argument():
@@ -40,66 +53,69 @@ def parse_argument():
 
 def main():
     arguments = parse_argument()
-    print(arguments)
+
     print('Connecting to device ... ')
-    programmer, size = make_connection(arguments.port)
+    programmer = make_connection(arguments.port)
 
     if arguments.dump:
-        dump = dump_eeprom(programmer, size)
-        print('Total %d' % len(dump))
-
-        output = '        '
-        for i in range(0, 16):
-            output += '|  %02X  ' % i
-        print(output)
-
-        for base in range(0, len(dump), 16):
-            output = '%04X    ' % base
-            for offset in range(0, 16, 1):
-                output += '|  %02X  ' % dump[base + offset]
-            print(output)
+        dump = dump_eeprom(programmer, eeprom_size)
+        
+        table = prettytable.PrettyTable()
+        table.field_names = ['ADDRESS'] + ['%02X' % i for i in range (0, 16)]
+        for base in range(0, eeprom_size, 16):
+            table.add_row(['%02X' % base] + ['02X' % d for d in dump[base + 0:base + 16]])
+        print(table)
 
     elif arguments.erase is not None:
         print('Erasing EEPROM ... ')
         erase_byte = int(arguments.erase, 0).to_bytes(1, 'little')
-        programmer.write(b'\x02' + erase_byte + b'\x00\x00')
-        ensure_ack(programmer)
-        programmer.close()
 
-        print('Validating EEPROM ...')
-        programmer, size = make_connection(arguments.port)
-        dump = list(dump_eeprom(programmer, size))
-        filter_dump = list(filter(lambda x: x == int(arguments.erase, 0), dump))
-        if len(filter_dump) != size:
-            raise Exception('Validate EEPROM failed')
+        programmer.write(CMD_ERASE + erase_byte + b'\x00\x00')
+        ensure_ack(programmer)
+
+        ensure_ack(programmer)
 
     elif len(arguments.write_byte) == 2:
         address = int(arguments.write_byte[0], 0).to_bytes(2, 'little')
         byte = int(arguments.write_byte[1], 0).to_bytes(1, 'little')
-        programmer.write(b'\x03' + address + byte)
+
+        programmer.write(CMD_WRITE_BYTE + address + byte)
+        ensure_ack(programmer)
+
+        ensure_ack(programmer)
+
+    elif arguments.write_file is not None:
+        file_size = os.path.getsize(arguments.write_file)
+        if file_size > eeprom_size:
+            raise Exception('File can not bigger than %d' % eeprom_size)
+
+        file_size = file_size.to_bytes(2, 'little')
+
+        programmer.write(CMD_WRITE_FILE + file_size + b'\x00')
+        ensure_ack()
+
+        file = open(arguments.write_file, 'rb')
+        programmer.write(file.read())
+        ensure_ack()
+
         ensure_ack(programmer)
 
     elif len(arguments.read_byte) == 2:
         address = int(arguments.read_byte, 0).to_bytes(2, 'little')
-        programmer.write(b'\x04' + address + b'\x00')
-        content = programmer.read(1)
-
+        programmer.write(CMD_READ_BYTE + address + b'\x00')
         ensure_ack(programmer)
+
+        content = programmer.read(1)
+        ensure_ack(programmer)
+
         print('%02X' % content[0])
 
-    elif arguments.write_file is not None:
-        file_size = os.path.getsize(arguments.write_file)
-        if file_size > size:
-            raise Exception('File can not bigger than %d' % size)
 
-        file_size = file_size.to_bytes(2, 'little')
-        programmer.write(b'\x05' + file_size + b'\x00')
-        file = open(arguments.write_file, 'rb')
-        programmer.write(file.read())
-
-        ensure_ack(programmer)
     else:
         pass
+
+    programmer.close()
+
     return 0
 
 

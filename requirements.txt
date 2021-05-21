@@ -1,1 +1,2 @@
 pyserial >= 3.5
+prettytable >= 2.1.0
