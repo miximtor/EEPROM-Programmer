@@ -76,9 +76,10 @@ void setupWrite()
   pinMode(WRITE_ENABLE, OUTPUT);
 }
 
-void enableWE()
+void triggerWE()
 {
   digitalWrite(WRITE_ENABLE, LOW);
+  pollDelay(1);
   digitalWrite(WRITE_ENABLE, HIGH);
 }
 
@@ -111,6 +112,7 @@ byte readEEPROM(uint16_t address)
   {
     data = (data << 1) + digitalRead(pin);
   }
+  pollDelay(1);
   return data;
 }
 
@@ -125,7 +127,7 @@ void writeEEPROM(uint16_t address, byte data)
     data = data >> 1;
   }
 
-  pollDelay(10);
+  triggerWE();
 }
 
 void writeSignleByte(unsigned int address, byte data)
